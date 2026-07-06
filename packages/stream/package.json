@@ -1,0 +1,53 @@
+{
+  "name": "@trickle/stream",
+  "version": "0.1.0",
+  "description": "A pre-authorized keysend streaming allowance for the CKB Fiber Network",
+  "license": "MIT",
+  "author": "LusoCryptoLabs",
+  "homepage": "https://github.com/LusoCryptoLabs/trickle",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/LusoCryptoLabs/trickle.git",
+    "directory": "packages/stream"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "node --import tsx --test \"test/**/*.test.ts\""
+  },
+  "keywords": [
+    "ckb",
+    "fiber",
+    "keysend",
+    "streaming",
+    "metering",
+    "pay-as-you-go",
+    "allowance",
+    "micropayments"
+  ],
+  "dependencies": {
+    "@trickle/auth": "workspace:*",
+    "@trickle/core": "workspace:*",
+    "@noble/hashes": "^1.5.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0"
+  }
+}

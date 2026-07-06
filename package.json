@@ -1,0 +1,12 @@
+{
+  "name": "trickle-monorepo",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Trickle: an off-chain streaming-allowance (pay-as-you-go metering) primitive for the CKB Fiber Network, with a hold-and-capture escrow sibling",
+  "license": "MIT",
+  "packageManager": "pnpm@10.33.2",
+  "scripts": {
+    "build": "pnpm -r --filter \"./packages/*\" build",
+    "test": "pnpm -r --filter \"./packages/*\" test"
+  }
+}

@@ -1,0 +1,53 @@
+{
+  "name": "@trickle/custody",
+  "version": "0.1.0",
+  "description": "On-chain M-of-N / WebAuthn custody cell for captured Fiber payments (Stage B)",
+  "license": "MIT",
+  "author": "LusoCryptoLabs",
+  "homepage": "https://github.com/LusoCryptoLabs/trickle",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/LusoCryptoLabs/trickle.git",
+    "directory": "packages/custody"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "node --import tsx --test \"test/**/*.test.ts\""
+  },
+  "keywords": [
+    "ckb",
+    "fiber",
+    "custody",
+    "m-of-n",
+    "webauthn",
+    "escrow",
+    "smart-account"
+  ],
+  "dependencies": {
+    "@trickle/core": "workspace:*",
+    "@ckb-ccc/core": "1.12.5",
+    "@noble/curves": "^1.9.7",
+    "@noble/hashes": "^1.8.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0"
+  }
+}

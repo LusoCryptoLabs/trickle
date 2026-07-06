@@ -1,0 +1,389 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Trickle live demo</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 15px/1.5 ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif; background: #0d1117; color: #e6edf3; }
+  .wrap { max-width: 760px; margin: 0 auto; padding: 28px 20px 60px; }
+  h1 { font-size: 22px; margin: 0 0 4px; } h1 span { color: #58a6ff; }
+  .sub { color: #8b949e; margin: 0 0 18px; font-size: 13px; }
+  .health { font-size: 12px; color: #8b949e; margin-bottom: 18px; } .health b { color: #3fb950; }
+  a { color: #58a6ff; }
+  .card { background: #161b22; border: 1px solid #30363d; border-radius: 12px; padding: 18px; margin-bottom: 14px; }
+  .row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  button { font: inherit; font-weight: 600; border: 1px solid #30363d; border-radius: 8px; padding: 9px 14px; cursor: pointer; background: #21262d; color: #e6edf3; }
+  button:hover { background: #30363d; } button:disabled { opacity: .45; cursor: default; }
+  button.primary { background: #238636; border-color: #2ea043; } button.primary:hover { background: #2ea043; }
+  button.go { background: #1f6feb; border-color: #388bfd; } button.go:hover { background: #388bfd; }
+  button.warn { background: #9e6a03; border-color: #bb8009; } button.warn:hover { background: #bb8009; }
+  button.ghost { background: transparent; }
+  input[type=number] { font: inherit; width: 90px; background: #0b0f14; color: #e6edf3; border: 1px solid #30363d; border-radius: 8px; padding: 8px 10px; }
+  input[type=range] { width: 100%; accent-color: #3fb950; margin: 10px 0 4px; cursor: pointer; }
+  .step { color: #8b949e; font-size: 12px; text-transform: uppercase; letter-spacing: .06em; margin-bottom: 8px; }
+  canvas { width: 100%; height: auto; display: block; border: 1px solid #30363d; border-radius: 10px; background: #05070d; }
+  .meter { height: 18px; background: #0b0f14; border: 1px solid #30363d; border-radius: 999px; overflow: hidden; margin: 8px 0; }
+  .fill { height: 100%; width: 0%; background: linear-gradient(90deg,#1f6feb,#3fb950); transition: width .2s linear; }
+  .muted { color: #8b949e; font-size: 13px; }
+  .runway { font-size: 13px; color: #8b949e; } .runway b { color: #e6edf3; font-size: 24px; font-weight: 800; }
+  .drip { color: #3fb950; font-weight: 700; font-size: 13px; opacity: 0; transition: opacity .15s; }
+  .drip.on { opacity: 1; }
+  .ctrls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
+  .stat { display: flex; gap: 24px; margin-top: 12px; flex-wrap: wrap; align-items: flex-end; }
+  .stat div b { color: #e6edf3; font-size: 17px; } .stat div { color: #8b949e; font-size: 12px; }
+  .live { color: #d29922; } .stopped { color: #3fb950; }
+  .dot { font-size: 12px; color: #6e7681; } .dot.ok { color: #3fb950; } .dot.warn { color: #d29922; } .dot.bad { color: #f85149; }
+  .hint { color: #8b949e; font-size: 12px; margin-top: 8px; }
+  .badges { display: flex; gap: 8px; flex-wrap: wrap; margin: 6px 0 0; }
+  .chip { font-size: 11px; color: #adbac7; background: #0b0f14; border: 1px solid #30363d; border-radius: 999px; padding: 3px 10px; }
+  .chip.policy { color: #d2a8ff; border-color: #6e40c9; }
+  details { margin-top: 16px; } summary { cursor: pointer; color: #8b949e; font-size: 12px; }
+  .log { font: 12px/1.6 ui-monospace, Menlo, monospace; color: #8b949e; background: #0b0f14; border: 1px solid #30363d; border-radius: 10px; padding: 12px 14px; margin-top: 10px; max-height: 150px; overflow: auto; white-space: pre-wrap; }
+  .log .ok { color: #3fb950; } .log .no { color: #f85149; }
+  .tinylink { font-size: 11px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Trickle</h1>
+  <p style="margin:0 0 10px;font-size:15px;line-height:1.55;color:#e6edf3">Watch a video that charges you by the second. Set a spending cap, unlock it with a passkey (Face ID or Windows Hello), and it stops the instant you hit the limit. No subscription, no prepaid balance.</p>
+  <p class="sub">Under the hood it settles every second on CKB Fiber, with nothing held. <a href="/studio">streamer studio</a> &middot; <a href="/escrow">escrow sibling</a></p>
+  <div id="demoBanner" style="display:none;background:#12233b;border:1px solid #2f4d7a;border-radius:10px;padding:10px 14px;margin:0 0 16px;font-size:13px;color:#adbac7">
+    <b style="color:#58a6ff">Demo mode.</b> Settlement here is simulated so this link stays live for judges to test. The real run on two Fiber nodes is in the <a id="bannerVideo" href="#" target="_blank" rel="noopener">video</a> and the <a id="bannerRepo" href="#" target="_blank" rel="noopener">source</a>.
+  </div>
+  <div class="health" id="health">connecting...</div>
+
+  <div class="card" id="chanCard">
+    <div class="step">Fiber channel</div>
+    <div class="row">
+      <div><span id="chanDot" class="dot">&#9679;</span> payer &#8644; provider &middot; <span id="chanState" class="muted">checking...</span></div>
+      <div class="muted">capacity <b id="chanCap">-</b> CKB</div>
+    </div>
+    <div class="stat">
+      <div>your balance<br><b id="walletBal">-</b> CKB</div>
+      <div>paid to the creator<br><b id="provBal">-</b> CKB</div>
+      <div>full video costs<br><b id="fullCost">-</b> CKB</div>
+      <div>streamer rate<br><b id="rateTop">-</b> CKB/s</div>
+    </div>
+  </div>
+
+  <div class="card" id="titleCard" style="display:none"><div class="step">Now streaming</div><div id="streamTitle" style="font-size:18px;font-weight:700">-</div></div>
+
+  <div class="card" id="registerCard" style="display:none">
+    <div class="step">One time</div>
+    <div class="row"><div>Register a device passkey to authorize budgets</div><button id="regBtn" class="primary">Register passkey</button></div>
+  </div>
+
+  <div class="card" id="setupCard" style="display:none">
+    <div class="step">Authorize a streaming budget (one passkey tap)</div>
+    <div class="row">
+      <div>Budget <input id="budget" type="number" min="0.2" step="0.1" value="2" /> CKB &middot; pay-as-you-watch a <span id="vlen">60</span>s video</div>
+      <button id="authBtn" class="go">Authorize budget &amp; play</button>
+    </div>
+    <div class="hint" id="budgetHint">&nbsp;</div>
+    <div class="badges"><span class="chip">nothing held</span><span class="chip">settles every tick</span><span class="chip">hard cap</span><span id="policyChip" class="chip policy">pay once</span></div>
+    <div class="hint"><a href="#" id="resetPk" class="tinylink">reset passkey</a></div>
+  </div>
+
+  <div class="card" id="videoCard" style="display:none">
+    <div class="step">Now playing &middot; paying per second under your grant</div>
+    <canvas id="screen" width="720" height="300"></canvas>
+    <input type="range" id="seek" min="0" max="60" step="0.1" value="0" />
+    <div class="meter"><div class="fill" id="fill"></div></div>
+    <div class="row">
+      <div class="runway"><b id="runway">0</b>s runway &middot; <span id="status" class="live">buffering</span> &middot; <span id="drip" class="drip">+0 paid</span></div>
+      <div class="ctrls">
+        <button id="pauseBtn">Pause</button>
+        <button id="stopBtn">Stop</button>
+        <button id="addBtn" class="warn" style="display:none">Add 1 CKB</button>
+        <span id="againWrap" style="display:none"><button id="againBtn" class="go">Watch again</button> <button id="newBtn" class="ghost">New stream</button></span>
+      </div>
+    </div>
+    <div class="stat">
+      <div>watching<br><b id="tWatched">00:00</b></div>
+      <div>paid / covered<br><b id="tCovered">0</b>s</div>
+      <div>spent<br><b id="spent">0.00</b> CKB</div>
+      <div>budget<br><b id="bud">0.00</b> CKB</div>
+      <div>access<br><b id="policyStat">pay once</b></div>
+    </div>
+  </div>
+
+  <details id="logBox">
+    <summary>show activity log</summary>
+    <div class="log" id="log"></div>
+  </details>
+</div>
+
+<script>
+if (location.hostname === "127.0.0.1") location.replace(location.href.replace("127.0.0.1", "localhost"));
+const $ = (id) => document.getElementById(id);
+const show = (id, on) => { $(id).style.display = on ? "" : "none"; };
+const hex = (b) => "0x" + [...new Uint8Array(b)].map(x => x.toString(16).padStart(2, "0")).join("");
+const hexToBytes = (h) => { h = h.replace(/^0x/, ""); const o = new Uint8Array(h.length/2); for (let i=0;i<o.length;i++) o[i]=parseInt(h.substr(i*2,2),16); return o; };
+const b64urlToBytes = (s) => { s = s.replace(/-/g,"+").replace(/_/g,"/"); const bin = atob(s); const o = new Uint8Array(bin.length); for (let i=0;i<bin.length;i++) o[i]=bin.charCodeAt(i); return o; };
+const bytesToB64url = (b) => btoa(String.fromCharCode(...new Uint8Array(b))).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"");
+const log = (m,c)=>{const e=$("log");e.innerHTML+=(c?`<span class="${c}">${m}</span>`:m)+"\n";e.scrollTop=e.scrollHeight;};
+const passkey = () => { try { return JSON.parse(localStorage.getItem("fh.passkey")); } catch { return null; } };
+const fmt = (s) => { s = Math.max(0, Math.floor(s)); return String(Math.floor(s/60)).padStart(2,"0")+":"+String(s%60).padStart(2,"0"); };
+
+// player + session state
+let sid = null, budgetCkb = 0, pricePerSec = 0.04, videoSeconds = 60;
+let playhead = 0, spentCkb = 0;
+let playing = false, capped = false, complete = false, seeking = false, ticking = false, lastTs = null, loopsOn = false;
+let rechargePolicy = "forever", cooldownMs = 20000;
+let coveredUntil = [];           // index = second -> expiry ms (performance.now timebase); Infinity = forever
+let infoCache = null, budgetTouched = false, dripUntil = 0;
+
+const tnow = () => performance.now();
+const isCovered = (i) => i >= 0 && i < videoSeconds && (coveredUntil[i] || 0) > tnow();
+function markCovered(i) {
+  if (rechargePolicy === "forever") coveredUntil[i] = Infinity;
+  else if (rechargePolicy === "cooldown") coveredUntil[i] = tnow() + cooldownMs;
+  else coveredUntil[i] = tnow() + 1500; // per_watch: enough to play this second once, then it re-charges
+}
+function coveredCount() { let n = 0; for (let i = 0; i < videoSeconds; i++) if (isCovered(i)) n++; return n; }
+const policyShort = () => rechargePolicy === "forever" ? "pay once" : rechargePolicy === "per_watch" ? "every watch" : `rental ${Math.round(cooldownMs/1000)}s`;
+
+function st() {
+  if (!passkey()) return "IDLE";
+  if (sid == null) return "READY";
+  if (complete) return "COMPLETE";
+  return "SESSION";
+}
+function render() {
+  const s = st();
+  show("registerCard", s === "IDLE");
+  show("setupCard", s === "READY");
+  show("videoCard", sid != null);
+  show("pauseBtn", sid != null && !complete);
+  show("stopBtn", sid != null && !complete);
+  show("addBtn", s === "SESSION" && capped);
+  show("againWrap", s === "COMPLETE");
+  $("pauseBtn").textContent = playing ? "Pause" : "Play";
+}
+
+async function health() {
+  const h = await (await fetch("/api/health")).json();
+  $("health").innerHTML = h.ok ? `connected to <b>fnn ${h.version}</b> &middot; passkey ${passkey()?"registered":"not registered"}` : "merchant node unreachable: start your fnn nodes";
+  if (h.demo) {
+    $("demoBanner").style.display = "";
+    if (h.repoUrl) $("bannerRepo").href = h.repoUrl;
+    const bv = $("bannerVideo");
+    if (bv) { if (h.videoUrl) bv.href = h.videoUrl; else bv.replaceWith(document.createTextNode("video")); }
+  }
+  render();
+}
+
+function budgetHint() {
+  if (!infoCache) return;
+  const b = Number($("budget").value) || 0, rate = infoCache.pricePerSec, vlen = infoCache.videoSeconds;
+  const covers = Math.min(vlen, Math.floor(b / rate));
+  const full = infoCache.fullVideoCostCkb;
+  $("budgetHint").innerHTML = `at ${rate} CKB/s this budget covers <b>${covers}</b> of ${vlen}s` +
+    (b + 1e-9 >= full ? ` (the whole video, ${full} CKB)` : `, then one tap adds more &middot; the full ${vlen}s is ${full} CKB`);
+}
+
+async function info() {
+  let d; try { d = await (await fetch("/api/stream/info")).json(); } catch { return; }
+  infoCache = d;
+  $("vlen").textContent = d.videoSeconds;
+  $("rateTop").textContent = d.pricePerSec;
+  $("fullCost").textContent = d.fullVideoCostCkb;
+  if (d.title) { $("streamTitle").textContent = d.title; show("titleCard", true); }
+  if (d.rechargePolicy) rechargePolicy = d.rechargePolicy;
+  if (d.cooldownSeconds) cooldownMs = d.cooldownSeconds * 1000;
+  const pol = rechargePolicy === "forever" ? "pay once, rewatch free"
+    : rechargePolicy === "per_watch" ? "charged every watch"
+    : `rental: re-charges after ${Math.round(cooldownMs/1000)}s`;
+  $("policyChip").textContent = pol; $("policyStat").textContent = policyShort();
+  if (!budgetTouched && d.suggestedBudgetCkb != null && sid == null) $("budget").value = d.suggestedBudgetCkb;
+  const c = d.channel || {};
+  const up = d.buyer?.ok && d.provider?.ok;
+  const dot = $("chanDot"), state = $("chanState");
+  if (up && c.exists && c.ready) { dot.className = "dot ok"; state.textContent = `${c.state} on fnn ${d.provider.version}`; }
+  else if (up && c.exists) { dot.className = "dot warn"; state.textContent = `${c.state} (opening)`; }
+  else if (up) { dot.className = "dot warn"; state.textContent = "nodes up, no channel"; }
+  else { dot.className = "dot bad"; state.textContent = "node unreachable"; }
+  $("chanCap").textContent = c.capacityCkb != null ? c.capacityCkb.toFixed(2) : "-";
+  $("walletBal").textContent = c.payerBalanceCkb != null ? c.payerBalanceCkb.toFixed(2) : "-";
+  $("provBal").textContent = c.providerBalanceCkb != null ? c.providerBalanceCkb.toFixed(2) : "-";
+  budgetHint();
+}
+
+$("budget").addEventListener("input", () => { budgetTouched = true; budgetHint(); });
+
+$("regBtn").onclick = async () => {
+  try {
+    const cred = await navigator.credentials.create({ publicKey: {
+      challenge: crypto.getRandomValues(new Uint8Array(32)),
+      rp: { name: "Trickle", id: location.hostname },
+      user: { id: crypto.getRandomValues(new Uint8Array(16)), name: "payer", displayName: "Payer" },
+      pubKeyCredParams: [{ type: "public-key", alg: -7 }],
+      authenticatorSelection: { userVerification: "required", residentKey: "discouraged" }, timeout: 60000,
+    }});
+    const raw = cred.response.getPublicKey && cred.response.getPublicKey();
+    if (!raw) throw new Error("no public key; use Chrome or Edge");
+    const spki = new Uint8Array(raw);
+    const pubkey = hex(spki.slice(spki.length - 64));
+    localStorage.setItem("fh.passkey", JSON.stringify({ credId: bytesToB64url(cred.rawId), pubkey }));
+    await fetch("/api/passkey", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ pubkey }) });
+    log("passkey registered", "ok"); health();
+  } catch (e) { log("registration failed: " + (e.name||"") + " " + (e.message||e), "no"); }
+};
+$("resetPk").onclick = (e) => { e.preventDefault(); localStorage.removeItem("fh.passkey"); log("passkey cleared"); health(); };
+
+async function getAssertion(digestHex) {
+  const pk = passkey();
+  const a = await navigator.credentials.get({ publicKey: {
+    challenge: hexToBytes(digestHex), rpId: location.hostname,
+    allowCredentials: [{ type: "public-key", id: b64urlToBytes(pk.credId) }], userVerification: "required", timeout: 60000,
+  }});
+  const r = a.response;
+  return { authenticatorData: hex(r.authenticatorData), clientDataJSON: hex(r.clientDataJSON), signature: hex(r.signature), pubkey: pk.pubkey };
+}
+
+// cold start: first passkey tap authorizes a budget AND begins playback from 0
+$("authBtn").onclick = async () => {
+  try {
+    const budget = Number($("budget").value) || 2;
+    const start = await (await fetch("/api/stream/start", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ budgetCkb: budget }) })).json();
+    log(`budget grant for ${start.budgetCkb} CKB at ${start.pricePerSec} CKB/s; tap your passkey...`);
+    const assertion = await getAssertion(start.digest);
+    const auth = await fetch(`/api/stream/${start.id}/authorize`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ assertion }) });
+    if (!auth.ok) throw new Error((await auth.json()).error || "authorize rejected");
+    sid = start.id; budgetCkb = start.budgetCkb; pricePerSec = start.pricePerSec; videoSeconds = start.videoSeconds;
+    playhead = 0; spentCkb = 0; capped = false; complete = false; playing = true; coveredUntil = new Array(videoSeconds).fill(0);
+    $("bud").textContent = budgetCkb.toFixed(2); $("seek").max = videoSeconds;
+    log(`budget authorized; ${Math.floor(budgetCkb / pricePerSec)}s covered before you top up`, "ok");
+    render(); startLoops();
+  } catch (e) { log("authorize failed: " + (e.name||"") + " " + (e.message||e), "no"); }
+};
+
+// at the cap: re-sign a bigger grant and resume from the same frame
+$("addBtn").onclick = async () => {
+  try {
+    const ts = await (await fetch(`/api/stream/${sid}/topup-start`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ addCkb: 1 }) })).json();
+    log(`tap to add 1 CKB (new cap ${ts.newBudgetCkb} CKB)...`);
+    const assertion = await getAssertion(ts.digest);
+    const resp = await fetch(`/api/stream/${sid}/topup`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ assertion }) });
+    if (!resp.ok) throw new Error((await resp.json()).error || "top-up rejected");
+    budgetCkb = (await resp.json()).budgetCkb; capped = false;
+    $("bud").textContent = budgetCkb.toFixed(2);
+    log(`budget raised to ${budgetCkb} CKB; playback resumes`, "ok");
+    render();
+  } catch (e) { log("top-up failed: " + (e.name||"") + " " + (e.message||e), "no"); }
+};
+
+$("pauseBtn").onclick = () => { playing = !playing; if (playing && complete) complete = false; render(); };
+$("stopBtn").onclick = () => { playing = false; playhead = 0; complete = false; render(); };
+$("againBtn").onclick = () => { playhead = 0; complete = false; playing = true; render(); };
+$("newBtn").onclick = () => { sid = null; playhead = 0; spentCkb = 0; capped = false; complete = false; playing = false; coveredUntil = []; render(); };
+$("seek").addEventListener("input", () => { seeking = true; playhead = Number($("seek").value); });
+$("seek").addEventListener("change", () => { seeking = false; });
+
+// pay just-in-time for the second under the playhead (and a small lead), per the recharge policy
+async function paymentTick() {
+  if (!sid || complete || capped || !playing || seeking || ticking) return;
+  const lead = rechargePolicy === "per_watch" ? 1 : 4;
+  const start = Math.floor(playhead);
+  let target = -1;
+  for (let j = start; j <= start + lead && j < videoSeconds; j++) { if (!isCovered(j)) { target = j; break; } }
+  if (target < 0) return;
+  ticking = true;
+  try {
+    const r = await (await fetch(`/api/stream/${sid}/tick`, { method: "POST" })).json();
+    if (r.ok) { markCovered(target); spentCkb = r.spentCkb; dripUntil = tnow() + 350; }
+    else if (r.capped) { capped = true; spentCkb = r.spentCkb; log(`budget reached (${spentCkb.toFixed(2)} CKB), add budget to keep watching`, "no"); render(); }
+  } catch (e) { /* node hiccup; retry */ }
+  ticking = false;
+}
+
+const cv = $("screen"), ctx = cv.getContext("2d");
+const W = cv.width, H = cv.height;
+function draw(ts) {
+  ctx.fillStyle = "#05070d"; ctx.fillRect(0, 0, W, H);
+  const pw = 132, cx = W / 2, top = 44, botPad = 60, offset = playhead * pw;
+  const first = Math.floor((offset - cx) / pw) - 1;
+  for (let i = first; i * pw < offset + cx + pw; i++) {
+    if (i < 0 || i >= videoSeconds) continue;
+    const x = cx + i * pw - offset, paid = isCovered(i);
+    ctx.fillStyle = `hsl(${(i * 27) % 360} 60% ${paid ? 40 : 13}%)`;
+    ctx.fillRect(x + 6, top, pw - 12, H - top - botPad);
+    ctx.textAlign = "center";
+    ctx.fillStyle = paid ? "rgba(255,255,255,.95)" : "rgba(255,255,255,.22)";
+    ctx.font = "600 30px ui-monospace, monospace"; ctx.fillText(fmt(i), x + pw / 2, H / 2);
+    ctx.font = "11px ui-sans-serif, system-ui"; ctx.fillText(paid ? "paid" : "unpaid", x + pw / 2, H / 2 + 26);
+  }
+  ctx.strokeStyle = "#f0f6fc"; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(cx, top - 8); ctx.lineTo(cx, H - botPad + 8); ctx.stroke();
+  ctx.fillStyle = "#f0f6fc"; ctx.beginPath(); ctx.moveTo(cx - 7, top - 8); ctx.lineTo(cx + 7, top - 8); ctx.lineTo(cx, top + 2); ctx.closePath(); ctx.fill();
+  ctx.textAlign = "left"; ctx.fillStyle = "#e6edf3"; ctx.font = "700 22px ui-monospace, monospace";
+  ctx.fillText(fmt(playhead) + " / " + fmt(videoSeconds), 16, 30);
+  const cur = Math.floor(playhead);
+  const stt = complete ? ["COMPLETE", "#3fb950"]
+    : !playing ? ["STOPPED", "#8b949e"]
+    : capped ? ["BUDGET REACHED", "#f85149"]
+    : !isCovered(cur) ? ["PAYING", "#d29922"] : ["PLAYING", "#3fb950"];
+  ctx.textAlign = "right"; ctx.fillStyle = stt[1]; ctx.font = "700 15px ui-sans-serif, system-ui"; ctx.fillText(stt[0], W - 14, 30);
+  if (ts < dripUntil) {
+    const prog = 1 - (dripUntil - ts) / 350;
+    ctx.fillStyle = "#3fb950"; ctx.beginPath(); ctx.arc(40 + prog * (W - 80), top - 22, 5, 0, Math.PI * 2); ctx.fill();
+  }
+  // bottom coverage bar: a green tick for every covered second, plus the playhead marker
+  const by = H - 28, bw = W - 32, segw = bw / videoSeconds;
+  ctx.fillStyle = "#0b0f14"; ctx.fillRect(16, by, bw, 14);
+  for (let i = 0; i < videoSeconds; i++) if (isCovered(i)) { ctx.fillStyle = "#238636"; ctx.fillRect(16 + i * segw, by, Math.max(1, segw - 0.5), 14); }
+  ctx.fillStyle = "#f0f6fc"; ctx.fillRect(16 + (playhead / videoSeconds) * bw - 1, by - 2, 2, 18);
+}
+
+function hud(ts) {
+  $("tWatched").textContent = fmt(playhead);
+  $("tCovered").textContent = coveredCount();
+  $("spent").textContent = spentCkb.toFixed(2);
+  $("fill").style.width = Math.min(100, (spentCkb / budgetCkb) * 100) + "%";
+  $("runway").textContent = Math.max(0, Math.floor((budgetCkb - spentCkb) / pricePerSec));
+  const cur = Math.floor(playhead);
+  let s = complete ? ["complete", "stopped"]
+    : !playing ? ["stopped", "stopped"]
+    : capped ? ["budget reached, add to continue", "live"]
+    : !isCovered(cur) ? ["paying for this second...", "live"] : ["streaming, paying per second", "live"];
+  $("status").textContent = s[0]; $("status").className = s[1];
+  const d = $("drip");
+  if (ts < dripUntil) { d.textContent = "+" + pricePerSec + " paid"; d.classList.add("on"); } else { d.classList.remove("on"); }
+}
+
+function frame(ts) {
+  if (lastTs == null) lastTs = ts;
+  let dt = (ts - lastTs) / 1000; lastTs = ts; if (dt > 0.25) dt = 0.25;
+  if (playing && !complete && !seeking) {
+    const cur = Math.floor(playhead);
+    if (isCovered(cur)) {
+      const next = Math.floor(playhead + dt);
+      if (next === cur || isCovered(next)) playhead = Math.min(videoSeconds, playhead + dt);
+      else playhead = Math.max(playhead, next - 1e-3); // sit at the boundary of the unpaid next second
+    }
+    if (playhead >= videoSeconds - 1e-3) { playhead = videoSeconds; complete = true; playing = false; log("reached the end", "ok"); render(); }
+  }
+  if (!seeking) $("seek").value = playhead;
+  draw(ts); hud(ts);
+  requestAnimationFrame(frame);
+}
+
+function startLoops() {
+  if (loopsOn) return; loopsOn = true;
+  setInterval(paymentTick, 90);
+  requestAnimationFrame(frame);
+}
+
+async function init() {
+  const pk = passkey();
+  if (pk) { try { await fetch("/api/passkey", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ pubkey: pk.pubkey }) }); } catch {} }
+  health(); info(); render();
+}
+init(); setInterval(health, 8000); setInterval(info, 1500);
+</script>
+</body>
+</html>

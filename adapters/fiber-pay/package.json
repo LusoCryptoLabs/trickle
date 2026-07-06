@@ -1,0 +1,50 @@
+{
+  "name": "@trickle/adapter-fiber-pay",
+  "version": "0.1.0",
+  "description": "Use authorize-then-capture escrow on top of a @fiber-pay/sdk FiberRpcClient",
+  "license": "MIT",
+  "author": "LusoCryptoLabs",
+  "homepage": "https://github.com/LusoCryptoLabs/trickle",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/LusoCryptoLabs/trickle.git",
+    "directory": "adapters/fiber-pay"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "node --import tsx --test \"test/**/*.test.ts\""
+  },
+  "keywords": [
+    "fiber-pay",
+    "trickle",
+    "adapter",
+    "ckb",
+    "fiber",
+    "escrow"
+  ],
+  "dependencies": {
+    "@trickle/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@trickle/auth": "workspace:*",
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0"
+  }
+}

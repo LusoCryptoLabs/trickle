@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Trickle escrow (sibling)</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 15px/1.5 ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    background: #0d1117; color: #e6edf3; }
+  .wrap { max-width: 760px; margin: 0 auto; padding: 28px 20px 60px; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  h1 span { color: #58a6ff; }
+  .sub { color: #8b949e; margin: 0 0 22px; font-size: 13px; }
+  .health { font-size: 12px; color: #8b949e; margin-bottom: 18px; }
+  .health b { color: #3fb950; }
+  .card { background: #161b22; border: 1px solid #30363d; border-radius: 12px; padding: 18px; margin-bottom: 14px; }
+  .row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  button { font: inherit; font-weight: 600; border: 0; border-radius: 8px; padding: 10px 16px; cursor: pointer;
+    background: #21262d; color: #e6edf3; border: 1px solid #30363d; }
+  button:hover { background: #30363d; }
+  button.primary { background: #238636; border-color: #2ea043; }
+  button.primary:hover { background: #2ea043; }
+  button.capture { background: #1f6feb; border-color: #388bfd; }
+  button.capture:hover { background: #388bfd; }
+  button:disabled { opacity: .45; cursor: default; }
+  .step { color: #8b949e; font-size: 12px; text-transform: uppercase; letter-spacing: .06em; margin-bottom: 8px; }
+  .order { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
+  .amount { font-size: 26px; font-weight: 700; }
+  .badge { font-size: 12px; font-weight: 700; padding: 5px 11px; border-radius: 999px; letter-spacing: .04em; }
+  .b-pending { background: #21262d; color: #8b949e; }
+  .b-held { background: #3d2c00; color: #d29922; animation: pulse 1.3s ease-in-out infinite; }
+  .b-captured { background: #0f3a1f; color: #3fb950; }
+  .b-refunded { background: #21262d; color: #8b949e; }
+  @keyframes pulse { 0%,100% { opacity: 1 } 50% { opacity: .45 } }
+  .actions { display: flex; gap: 8px; margin-top: 14px; }
+  .log { font: 12px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace; color: #8b949e;
+    background: #0b0f14; border: 1px solid #30363d; border-radius: 10px; padding: 12px 14px; margin-top: 18px;
+    max-height: 220px; overflow: auto; white-space: pre-wrap; }
+  .log b { color: #58a6ff; } .log .ok { color: #3fb950; } .log .no { color: #f85149; }
+  .note { font-size: 12px; color: #6e7681; margin-top: 6px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <p style="margin:0 0 14px"><a href="/" style="color:#58a6ff;font-size:13px;text-decoration:none">&larr; Back to the Trickle demo</a></p>
+  <h1>Trickle <span>escrow</span></h1>
+  <p class="sub">The sibling primitive: hold a Fiber payment, then release it only with a passkey. Real testnet nodes.</p>
+  <div id="demoBanner" style="display:none;background:#12233b;border:1px solid #2f4d7a;border-radius:10px;padding:10px 14px;margin:0 0 16px;font-size:13px;color:#adbac7">
+    <b style="color:#58a6ff">Demo mode.</b> Settlement here is simulated so this link stays live for judges to test. The real run on two Fiber nodes is in the <a id="bannerVideo" href="#" target="_blank" rel="noopener">video</a> and the <a id="bannerRepo" href="#" target="_blank" rel="noopener">source</a>.
+  </div>
+  <div class="health" id="health">connecting...</div>
+
+  <div class="card">
+    <div class="step">Step 1 &middot; one time</div>
+    <div class="row">
+      <div>Register a device passkey as the capture authority<div class="note" id="pkNote">Windows Hello / Touch ID / a security key</div></div>
+      <button id="regBtn" class="primary">Register passkey</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="step">Step 2 &middot; new order</div>
+    <div class="row">
+      <div>Create a pay-on-delivery order. The buyer node pays it and the funds are held, not captured.</div>
+      <button id="orderBtn" disabled>New order</button>
+    </div>
+  </div>
+
+  <div id="orders"></div>
+
+  <div class="log" id="log"></div>
+</div>
+
+<script>
+// WebAuthn rejects IP-address origins; localhost is treated as secure. Auto-fix the common mistake.
+if (location.hostname === "127.0.0.1") location.replace(location.href.replace("127.0.0.1", "localhost"));
+const $ = (id) => document.getElementById(id);
+const enc = new TextEncoder();
+const hex = (b) => "0x" + [...new Uint8Array(b)].map(x => x.toString(16).padStart(2, "0")).join("");
+const hexToBytes = (h) => { h = h.replace(/^0x/, ""); const o = new Uint8Array(h.length/2); for (let i=0;i<o.length;i++) o[i]=parseInt(h.substr(i*2,2),16); return o; };
+const b64urlToBytes = (s) => { s = s.replace(/-/g,"+").replace(/_/g,"/"); const bin = atob(s); const o = new Uint8Array(bin.length); for (let i=0;i<bin.length;i++) o[i]=bin.charCodeAt(i); return o; };
+const bytesToB64url = (b) => btoa(String.fromCharCode(...new Uint8Array(b))).replace(/\+/g,"-").replace(/\//g,"_").replace(/=+$/,"");
+function log(msg, cls) { const el = $("log"); el.innerHTML += (cls ? `<span class="${cls}">${msg}</span>` : msg) + "\n"; el.scrollTop = el.scrollHeight; }
+const passkey = () => { try { return JSON.parse(localStorage.getItem("fh.passkey")); } catch { return null; } };
+
+async function health() {
+  const h = await (await fetch("/api/health")).json();
+  $("health").innerHTML = h.ok
+    ? `connected to <b>fnn ${h.version}</b> on chain ${h.chain} &middot; order size ${h.orderCkb} CKB &middot; passkey ${h.passkeyRegistered || passkey() ? "registered" : "not registered"}`
+    : "merchant node unreachable: start your fnn nodes";
+  if (passkey()) { $("orderBtn").disabled = false; $("regBtn").textContent = "Re-register passkey"; }
+}
+
+$("regBtn").onclick = async () => {
+  try {
+    log("registering passkey via the platform authenticator...");
+    const cred = await navigator.credentials.create({ publicKey: {
+      challenge: crypto.getRandomValues(new Uint8Array(32)),
+      rp: { name: "Trickle", id: location.hostname },
+      user: { id: crypto.getRandomValues(new Uint8Array(16)), name: "merchant", displayName: "Merchant" },
+      pubKeyCredParams: [{ type: "public-key", alg: -7 }],
+      authenticatorSelection: { userVerification: "required", residentKey: "discouraged" },
+      timeout: 60000,
+    }});
+    const raw = cred.response.getPublicKey && cred.response.getPublicKey();
+    if (!raw) throw new Error("this browser did not expose the credential public key. Use Chrome or Edge.");
+    const spki = new Uint8Array(raw);
+    if (spki[spki.length - 65] !== 0x04) throw new Error("unexpected public key format");
+    const pubkey = hex(spki.slice(spki.length - 64));
+    localStorage.setItem("fh.passkey", JSON.stringify({ credId: bytesToB64url(cred.rawId), pubkey }));
+    await fetch("/api/passkey", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ pubkey }) });
+    log("passkey registered " + pubkey.slice(0, 18) + "...", "ok");
+    health();
+  } catch (e) { log("registration failed: " + (e.name ? e.name + " " : "") + (e.message || e), "no"); }
+};
+
+let count = 0;
+$("orderBtn").onclick = async () => {
+  if (!passkey()) return log("register a passkey first", "no");
+  const o = await (await fetch("/api/order", { method: "POST" })).json();
+  const n = ++count;
+  log(`<b>order #${n}</b> authorize -> hold invoice ${o.invoiceAddress.slice(0,30)}...`);
+  renderOrder(o, n);
+  poll(o.id, n);
+};
+
+function badge(state) {
+  const map = { Pending: ["b-pending","creating"], Authorized: ["b-held","HELD"], Captured: ["b-captured","CAPTURED"], Refunded: ["b-refunded","REFUNDED"], Expired: ["b-refunded","EXPIRED"] };
+  const [c, t] = map[state] || ["b-pending", state];
+  return `<span class="badge ${c}">${t}</span>`;
+}
+function renderOrder(o, n) {
+  let el = $("o-" + o.id);
+  if (!el) {
+    el = document.createElement("div");
+    el.className = "card"; el.id = "o-" + o.id;
+    $("orders").prepend(el);
+  }
+  const ckb = (Number(BigInt(o.amount)) / 1e8);
+  const held = o.state === "Authorized";
+  el.innerHTML = `<div class="step">order #${n}</div>
+    <div class="order"><div class="amount">${ckb} CKB</div>${badge(o.state)}</div>
+    <div class="actions">
+      <button class="capture" data-cap="${o.id}" ${held?"":"disabled"}>Capture with passkey</button>
+      <button data-ref="${o.id}" ${held?"":"disabled"}>Refund</button>
+    </div>`;
+  el.querySelector("[data-cap]").onclick = () => capture(o.id, n);
+  el.querySelector("[data-ref]").onclick = () => refund(o.id, n);
+}
+
+async function poll(id, n) {
+  for (let i = 0; i < 40; i++) {
+    const o = await (await fetch(`/api/order/${id}`)).json();
+    renderOrder(o, n);
+    if (o.state === "Authorized") { log(`order #${n} buyer paid -> funds HELD`, "ok"); return; }
+    if (["Captured","Refunded","Expired"].includes(o.state)) return;
+    await new Promise(r => setTimeout(r, 1200));
+  }
+}
+
+async function capture(id, n) {
+  try {
+    const pk = passkey();
+    const { token, nonce } = await (await fetch(`/api/order/${id}/challenge`)).json();
+    log(`order #${n} capture: tap your passkey to sign...`);
+    const assertion = await navigator.credentials.get({ publicKey: {
+      challenge: hexToBytes(token),
+      rpId: location.hostname,
+      allowCredentials: [{ type: "public-key", id: b64urlToBytes(pk.credId) }],
+      userVerification: "required",
+      timeout: 60000,
+    }});
+    const r = assertion.response;
+    const body = { nonce, assertion: {
+      authenticatorData: hex(r.authenticatorData),
+      clientDataJSON: hex(r.clientDataJSON),
+      signature: hex(r.signature),
+      pubkey: pk.pubkey,
+    }};
+    const resp = await fetch(`/api/order/${id}/capture`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+    const o = await resp.json();
+    if (!resp.ok) throw new Error(o.error || "capture rejected");
+    renderOrder(o, n);
+    log(`order #${n} passkey verified -> settle_invoice -> CAPTURED`, "ok");
+  } catch (e) { log(`order #${n} capture failed: ${e.name ? e.name + " " : ""}${e.message || e}`, "no"); }
+}
+
+async function refund(id, n) {
+  const o = await (await fetch(`/api/order/${id}/refund`, { method: "POST" })).json();
+  renderOrder(o, n);
+  log(`order #${n} refund -> buyer released`, "ok");
+}
+
+// The server pins the authorized passkey in memory only, so re-send the browser's stored public key
+// on load (e.g. after a server restart). This is a re-pin, no biometric; capture still needs the tap.
+async function init() {
+  const pk = passkey();
+  if (pk) { try { await fetch("/api/passkey", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ pubkey: pk.pubkey }) }); } catch {} }
+  health();
+}
+init();
+setInterval(health, 8000);
+// demo-mode banner: honest label plus links to the video and source
+fetch("/api/health").then((r) => r.json()).then((h) => {
+  if (!h.demo) return;
+  const b = document.getElementById("demoBanner"); if (!b) return; b.style.display = "";
+  const rp = document.getElementById("bannerRepo"); if (rp && h.repoUrl) rp.href = h.repoUrl;
+  const bv = document.getElementById("bannerVideo");
+  if (bv) { if (h.videoUrl) bv.href = h.videoUrl; else bv.replaceWith(document.createTextNode("video")); }
+}).catch(() => {});
+</script>
+</body>
+</html>
